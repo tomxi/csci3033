@@ -1,6 +1,10 @@
 # csci3033
 where code for CSCI-GA 3033:012 goes here.
 
+## Current organization:
+All the functions are in util.py
+The notebook is my workstation also shows how to use functions in util.py
+
 ## Directives:
 - Homework 2A.
 For all videos we will work, convert all skeleton vertices original coordinate to this coordinate system.
