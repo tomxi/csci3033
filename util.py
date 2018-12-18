@@ -1,6 +1,12 @@
 import numpy as np
+import os
+import pickle
+import pandas as pd
 
 def read_skeleton_file(filename):
+    '''
+    translated form the matlab script
+    '''
     with open(filename, 'r') as file:
         framecount = int(file.readline().split()[0])
         # for each frame, store skeleton info as an element in bodyinfo 
@@ -72,7 +78,8 @@ def normalize_joints(joints):
     u1 /= s
     
     u2_temp = left_hip - neck
-    u3 = np.cross(u1, u2_temp) / np.linalg.norm(u2_temp, ord=2)
+    u3 = np.cross(u1, u2_temp)
+    u3 /= np.linalg.norm(u3, ord=2)
     
     u2 = np.cross(u1, u3)
     
@@ -86,3 +93,60 @@ def normalize_joints(joints):
         scaled_joints.append(normalized_coordinate)
     
     return scaled_joints
+
+def process_skeleton(sfile, skeletons_dir):
+    '''
+    process a .skeleton file into a .pickle file. Saves to the same directory
+    
+    Pickle files format:
+
+    the processed_bodyinfo is a numpy array that gets dumped into a pickle is in the following format:
+    
+    bodyinfo[f][b][j][u]
+    Where: 
+        f is the frame number             (depends on length of the video)
+        b is the body number              (there might not always be just 1 body/skeleton in a frame)
+        j is the joint number for a body  (25)
+        u is the basis number for a joint (3)
+    '''
+    bodyinfo = read_skeleton_file(sfile)
+    basename = os.path.basename(sfile).split('.')[0]
+    save_path = os.path.join(skeletons_dir, basename+'.pickle')
+    processed_bodyinfo = []
+    for frame in bodyinfo:
+        processed_frame = []
+        for body in frame:
+            scaled_joints = normalize_joints(body['joints'])
+            processed_frame.append(scaled_joints)
+        processed_bodyinfo.append(processed_frame)
+    with open(save_path, 'wb') as pfile:
+        pickle.dump(np.asarray(processed_bodyinfo), pfile)
+
+def pickle_to_action_array(pickle_file, keep_idx):
+    '''
+    Param: a converted pickle file of processed skeleton
+    #Return: a n*25*3 array of a_t*sign(d_t). n is number of total actions, ie (frames-2)*bodys,
+    #25 is for each joint, 3 is for xzy coordinate.
+    Return: a [ (n+2)*13*3, (n+1)*13*3, n*13*3] * number_body list
+    '''
+    out = []
+    with open(pickle_file, 'rb') as fp:
+        bodyinfo = pickle.load(fp)
+    if len(bodyinfo.shape) != 4:
+        print(pickle_file)
+    else:
+        for body in range(bodyinfo.shape[1]):
+            single_bodyinfo = bodyinfo[:, body, :, :]
+            single_bodyinfo = single_bodyinfo[:, keep_idx, :]
+            d = np.diff(single_bodyinfo, axis=0)
+            a = np.diff(d, axis=0)
+            out_body = [ single_bodyinfo, d, a, pickle_file]
+            out.append(out_body)
+    return out
+
+def pickle_files_to_action_series(pickle_files, keep_idx):
+    h = []
+    for pf in pickle_files:
+        h_single = pickle_to_action_array(pf, keep_idx)
+        h.extend(h_single)
+    return h
